@@ -23,21 +23,27 @@ class Server:
             self.accept_connections()
 
     def accept_connections(self):
-        self.s.listen(100)
-
+        self.s.listen(5)
         print('Running on IP: '+self.ip)
         print('Running on port: '+str(self.port))
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain('server.crt', 'server.key')
         
+        
         while True:
-            c, addr = self.s.accept()
-            connstream = context.wrap_socket(c, server_side=True)
-            print('New Connection From: ' + addr[0])
+            try:
+                c, addr = self.s.accept()
+                c.settimeout(10)
+                print('New Connection From: ' + addr[0])
+                connstream = context.wrap_socket(c, server_side=True)
+                print('Wrapping Socket in TLS: ' + addr[0])
+                self.connections.append(connstream)
 
-            self.connections.append(connstream)
-
-            threading.Thread(target=self.handle_client,args=(connstream,addr,)).start()
+                threading.Thread(target=self.handle_client,args=(connstream,addr,)).start()
+            except Exception as e:
+                c.close()
+                #print(e)
+                pass
         
     def broadcast(self, sock, data):
         for client in self.connections:
@@ -54,16 +60,15 @@ class Server:
             password = password.decode()
             if password == self.password:
                 while True:
-                    try:
                         data = connstream.recv(1024)
                         self.broadcast(connstream, data)
-                    except socket.error:
-                        connstream.close()
             else:
                 connstream.close()
+                self.connections.remove(connstream)
                 print("Client Dropped Due to Wrong Password")
         except:
             connstream.close()
-            print("Client Dropped Due to Unknown Error")
+            self.connections.remove(connstream)
+            print("Client Disconnected/Unknown Error")
 
 server = Server()
